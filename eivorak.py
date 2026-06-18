@@ -33,9 +33,6 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 app = Flask(__name__)
 
-with app.app_context():
-    init_db()
-
 @app.route('/')
 def home():
     return "EiVORAK v2.0 esta online", 200
@@ -66,7 +63,7 @@ Como és:
 - Falas em português de Angola
 - És direto, inteligente e honesto
 - Tens personalidade própria — não és um assistente genérico
-- Quando não sabes algo, dizes claramente e sugeres como encontrar a resposta
+- When não sabes algo, dizes claramente e sugeres como encontrar a resposta
 - Nunca és repetitivo nem vago
 - Podes ser bem-humorado mas sempre com substância
 - Tratas cada pessoa com respeito mas sem ser servil
@@ -220,7 +217,6 @@ def get_user_data(user_id):
 def fetch_facebook_user_profile(user_id):
     if not PAGE_ACCESS_TOKEN:
         return None
-    # Atualizado para a v23.0 para bater certo com o painel da tua app
     url = f"https://graph.facebook.com/v23.0/{user_id}"
     params = {
         "fields": "first_name,last_name,profile_pic,locale,timezone",
@@ -246,7 +242,6 @@ def save_message(user_id, role, content):
         row = cur.fetchone()
         
         if not row or not row[0]:
-            # Utilizador novo ou incompleto -> Faz o fetch e o download da foto APENAS ESTA VEZ
             fb_data = fetch_facebook_user_profile(user_id)
             if fb_data:
                 nome_completo = f"{fb_data.get('first_name')} {fb_data.get('last_name')}"
@@ -274,7 +269,6 @@ def save_message(user_id, role, content):
                     caminho_foto_local
                 ))
             else:
-                # Fallback simples caso a API falhe
                 cur.execute("""
                     INSERT INTO users (user_id, first_seen, last_seen, message_count)
                     VALUES (?, ?, ?, 1)
@@ -283,7 +277,6 @@ def save_message(user_id, role, content):
                         message_count = message_count + 1
                 """, (str(user_id), now, now))
         else:
-            # Utilizador já existe e está completo -> Só atualiza contagem e última vista de forma super leve
             cur.execute("""
                 UPDATE users SET 
                     last_seen = ?, 
@@ -295,7 +288,6 @@ def save_message(user_id, role, content):
     conn.close()
 
 def delete_user_data(user_id):
-    """Mecanismo de Opt-Out exigido pelas políticas da Meta"""
     try:
         conn = sqlite3.connect(DATABASE_FILE)
         cur = conn.cursor()
@@ -404,7 +396,7 @@ def handle_admin(sender_id, text):
         except: return "❌ Erro ao ensinar."
 
     if cmd.lower() == "admin:users":
-        export_to_txt() # Exporta o relatório apenas quando o Admin solicita
+        export_to_txt()
         conn = sqlite3.connect(DATABASE_FILE)
         cur = conn.cursor()
         cur.execute("SELECT user_id, first_name, last_name, locale, timezone, message_count FROM users ORDER BY message_count DESC LIMIT 20")
@@ -433,7 +425,6 @@ def handle_admin(sender_id, text):
 # PROCESSAMENTO PRINCIPAL / FLASK
 # ==========================
 def process_message(sender_id, text):
-    # 1. Tratamento para comando de eliminação de dados (Privacidade / Meta Review)
     if text.strip().lower() in ["/eliminar meus dados", "eliminar meus dados", "apagar meus dados"]:
         if delete_user_data(sender_id):
             return "♻️ Os teus dados e o histórico de conversas foram completamente eliminados do meu sistema de armazenamento."
@@ -462,6 +453,7 @@ def status(): return "ËiVORAK v2.0 ativo 🚀"
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+    init_db()  # <--- CORREÇÃO AQUI: Garante tabelas em cada verificação e recepção de dados
     if request.method == "GET":
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
@@ -474,7 +466,6 @@ def webhook():
             if "message" in msg:
                 sender = msg["sender"]["id"]
                 
-                # Resposta caso o revisor ou o utilizador envie algo que NÃO seja texto (imagens, likes, audios)
                 if "text" not in msg["message"]:
                     send_message(sender, "👋 Recebi o teu anexo/mídia! Mas, por agora, o ËiVORAK só consegue processar e responder a mensagens de texto plano.")
                     continue
@@ -487,6 +478,6 @@ def webhook():
 
 if __name__ == "__main__":
     init_db()
-    export_to_txt() # Gera o relatório uma vez apenas ao arrancar o bot
+    export_to_txt()
     print("🚀 ËiVORAK v2.0 - Otimizado e Preparado para o App Review!")
     app.run(port=PORT, debug=False, threaded=True)

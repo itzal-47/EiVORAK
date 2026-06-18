@@ -33,6 +33,13 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 app = Flask(__name__)
 
+with app.app_context():
+    init_db()
+
+@app.route('/')
+def home():
+    return "EiVORAK v2.0 esta online", 200
+
 # ==========================
 # PERSONALIDADE
 # ==========================

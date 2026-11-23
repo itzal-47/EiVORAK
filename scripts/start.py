@@ -31,6 +31,7 @@ def start(
     """Run the bot directly or let Litestream restore and supervise it."""
     env = dict(os.environ if environment is None else environment)
     env.setdefault("DATABASE_PATH", "eivorak_brain.db")
+    env.setdefault("LITESTREAM_REGION", "us-east-1")
     run_command = run or subprocess.run
     replace_process = exec_process or os.execvpe
     exists = database_exists or os.path.exists

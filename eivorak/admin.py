@@ -16,6 +16,14 @@ ADMIN_HELP = (
     "Comandos de admin: /ajuda, /stats, /utilizadores [n], "
     "/conversa <user_key> [n], /exportar [utilizadores|conversas|tudo]."
 )
+_DANGEROUS_CSV_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _spreadsheet_safe(value: object) -> object:
+    """Prefix text cells that spreadsheet applications may interpret as formulas."""
+    if isinstance(value, str) and value.startswith(_DANGEROUS_CSV_PREFIXES):
+        return "'" + value
+    return value
 
 
 @dataclass(frozen=True)
@@ -179,7 +187,8 @@ class AdminService:
         output = StringIO(newline="")
         writer = csv.writer(output)
         writer.writerow(
-            ("tipo", "user_key", "timestamp", "role", "content", "first_seen", "last_seen", "message_count", "first_name", "notice_sent")
+            _spreadsheet_safe(value)
+            for value in ("tipo", "user_key", "timestamp", "role", "content", "first_seen", "last_seen", "message_count", "first_name", "notice_sent")
         )
         with connect_db(self.database_path) as connection:
             if export_type in {"utilizadores", "tudo"}:
@@ -188,14 +197,20 @@ class AdminService:
                        FROM users ORDER BY user_key"""
                 ).fetchall()
                 for user_key, first_seen, last_seen, count, first_name, notice_sent in rows:
-                    writer.writerow(("utilizador", user_key, "", "", "", first_seen, last_seen, count, first_name or "", notice_sent))
+                    writer.writerow(
+                        _spreadsheet_safe(value)
+                        for value in ("utilizador", user_key, "", "", "", first_seen, last_seen, count, first_name or "", notice_sent)
+                    )
             if export_type in {"conversas", "tudo"}:
                 rows = connection.execute(
                     """SELECT user_key, timestamp, role, content
                        FROM conversations ORDER BY id"""
                 ).fetchall()
                 for user_key, timestamp, role, content in rows:
-                    writer.writerow(("conversa", user_key, timestamp, role, content, "", "", "", "", ""))
+                    writer.writerow(
+                        _spreadsheet_safe(value)
+                        for value in ("conversa", user_key, timestamp, role, content, "", "", "", "", "")
+                    )
         content = output.getvalue().encode("utf-8")
         if len(content) > MAX_EXPORT_BYTES:
             return AdminResponse("A exportação ultrapassa o limite de 20 MB. Reduz os dados exportados e tenta novamente.")

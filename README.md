@@ -20,6 +20,7 @@ O arranque usa modo local quando as quatro variáveis `LITESTREAM_*` estão vazi
 - `LITESTREAM_ENDPOINT`: URL HTTPS do endpoint S3 compatível.
 - `LITESTREAM_BUCKET`: bucket de destino.
 - `LITESTREAM_ACCESS_KEY_ID` e `LITESTREAM_SECRET_ACCESS_KEY`: credenciais do bucket.
+- `LITESTREAM_REGION`: região do serviço S3; opcional, por omissão `us-east-1`.
 
 O [litestream.yml](litestream.yml) expande as variáveis no arranque e não contém credenciais. Com réplica configurada, `scripts/start.py` tenta restaurar a base quando não existe localmente; a ausência de uma réplica inicial é aceite. Depois o Litestream executa e supervisiona o bot com `replicate -exec`. Erros reais de autenticação ou de rede interrompem o arranque para não criar silenciosamente uma base vazia.
 
@@ -30,11 +31,13 @@ O [litestream.yml](litestream.yml) expande as variáveis no arranque e não cont
 3. Adiciona as variáveis do bot no painel do Render:
    - Obrigatórias: `VERIFY_TOKEN`, `PAGE_ACCESS_TOKEN`, `META_APP_SECRET`, `GROQ_API_KEY`, `ADMIN_PAIRING_SECRET`.
    - Opcionais: `CREATOR_INFO`, `PORT`, `DATABASE_PATH` (o Dockerfile define `/data/eivorak_brain.db` por omissão).
-4. Para replicação, adiciona também `LITESTREAM_ENDPOINT`, `LITESTREAM_BUCKET`, `LITESTREAM_ACCESS_KEY_ID` e `LITESTREAM_SECRET_ACCESS_KEY`. O endpoint deve incluir o esquema, por exemplo `https://...`; a configuração usa a região S3 `us-east-1`.
+4. Para replicação, adiciona também `LITESTREAM_ENDPOINT`, `LITESTREAM_BUCKET`, `LITESTREAM_ACCESS_KEY_ID` e `LITESTREAM_SECRET_ACCESS_KEY`. O endpoint deve incluir o esquema, por exemplo `https://...`. `LITESTREAM_REGION` é opcional e usa `us-east-1` por omissão.
 
 Não coloques credenciais no Dockerfile nem no `litestream.yml`.
 
 Depois de emparelhar o admin pela Página, troca `ADMIN_PAIRING_SECRET` no Render. O código `/admin <código>` fica visível no histórico desse chat.
+
+O comando `/apagar` remove o registo do utilizador e as conversas, mas mantém o registo de auditoria dos comandos de admin.
 
 Sem as quatro variáveis de Litestream, o container corre o bot em modo local. Nesse modo, uma plataforma com disco efémero pode perder a base nos reinícios; configura uma réplica para restaurar os dados.
 

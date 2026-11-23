@@ -41,7 +41,8 @@ def create_app(
         if claim_privacy_notice(configuration.database_path, user_key):
             return (
                 "Guardo as tuas mensagens para manter o contexto. O criador pode rever conversas "
-                "para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar."
+                "para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar. "
+                "O registo de auditoria de admin mantém-se após /apagar."
             )
         return None
 

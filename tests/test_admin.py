@@ -69,13 +69,14 @@ def test_admin_lists_stats_conversations_and_exports_csv_in_memory(tmp_path):
     user_key = "messenger:visitor"
     save_message(str(path), user_key, "user", "Pergunta privada")
     save_message(str(path), user_key, "assistant", "Resposta privada")
+    save_message(str(path), "messenger:formula", "user", "=cmd")
     service = AdminService(str(path), "secret")
     service.handle("messenger:admin", "/admin secret")
 
     stats = service.handle("messenger:admin", "/stats")
     users = service.handle("messenger:admin", "/utilizadores 99")
     conversation = service.handle("messenger:admin", f"/conversa {user_key} 2")
-    assert stats and "Mensagens totais: 2" in stats.text
+    assert stats and "Mensagens totais: 3" in stats.text
     assert users and user_key in users.text
     assert conversation and "Pergunta privada" in conversation.text and "Resposta privada" in conversation.text
 
@@ -85,6 +86,7 @@ def test_admin_lists_stats_conversations_and_exports_csv_in_memory(tmp_path):
     rows = list(csv.reader(io.StringIO(exported.attachment.content.decode("utf-8"))))
     assert rows[0][0:5] == ["tipo", "user_key", "timestamp", "role", "content"]
     assert any(row[0] == "conversa" and row[4] == "Pergunta privada" for row in rows[1:])
+    assert any(row[0] == "conversa" and row[4] == "'=cmd" for row in rows[1:])
     user_export = service.handle("messenger:admin", "/exportar utilizadores")
     all_export = service.handle("messenger:admin", "/exportar tudo")
     assert user_export and user_export.attachment

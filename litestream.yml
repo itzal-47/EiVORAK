@@ -5,4 +5,4 @@ dbs:
       bucket: "${LITESTREAM_BUCKET}"
       path: eivorak/eivorak_brain
       endpoint: "${LITESTREAM_ENDPOINT}"
-      region: us-east-1
+      region: "${LITESTREAM_REGION}"

@@ -3,6 +3,7 @@ import hmac
 import json
 from types import SimpleNamespace
 
+from eivorak.admin import AdminResponse
 from eivorak.app import create_app
 from eivorak.config import Settings
 from eivorak.gateway import Gateway
@@ -55,7 +56,7 @@ def test_duplicate_mid_is_queued_and_processed_once(tmp_path):
     assert gateway.process_next()
     assert len(provider.calls) == 1
     assert sent == [
-        ("42", "Guardo as tuas mensagens para manter o contexto. O criador pode rever conversas para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar."),
+        ("42", "Guardo as tuas mensagens para manter o contexto. O criador pode rever conversas para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar. O registo de auditoria de admin mantém-se após /apagar."),
         ("42", "Resposta."),
     ]
 
@@ -92,3 +93,43 @@ def test_privacy_notice_is_sent_once_per_user(tmp_path):
     gateway.process_next()
     gateway.process_next()
     assert [text for _recipient, text in sent].count("Aviso de privacidade.") == 1
+
+
+def test_repeated_admin_command_is_rate_limited_for_non_admin():
+    handled = []
+    sent = []
+    gateway = Gateway(
+        lambda _key, _text: "não deve chegar ao modelo",
+        lambda _recipient, text: sent.append(text),
+        messages_per_minute=1,
+        worker_enabled=False,
+        command_handler=lambda _key, text: handled.append(text) or AdminResponse("comando recusado"),
+    )
+    for index in range(2):
+        gateway.enqueue_payload(_payload({"mid": f"stats-{index}", "text": "/stats"}))
+    gateway.process_next()
+    gateway.process_next()
+    assert handled == ["/stats"]
+    assert sent == [
+        "comando recusado",
+        "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.",
+    ]
+
+
+def test_admin_command_is_exempt_from_rate_limit():
+    handled = []
+    sent = []
+    gateway = Gateway(
+        lambda _key, _text: "unused",
+        lambda _recipient, text: sent.append(text),
+        messages_per_minute=1,
+        worker_enabled=False,
+        command_handler=lambda _key, text: handled.append(text) or AdminResponse("admin ok"),
+        admin_check=lambda _key: True,
+    )
+    for index in range(3):
+        gateway.enqueue_payload(_payload({"mid": f"admin-stats-{index}", "text": "/stats"}))
+    for _ in range(3):
+        gateway.process_next()
+    assert handled == ["/stats", "/stats", "/stats"]
+    assert sent == ["admin ok", "admin ok", "admin ok"]

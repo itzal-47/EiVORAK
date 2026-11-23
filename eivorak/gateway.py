@@ -122,12 +122,15 @@ class Gateway:
     def _process_event(self, event: dict[str, Any]) -> None:
         sender = event["sender"]
         user_key = f"messenger:{sender}"
+        message = event["message"]
+        text = str(message["text"]) if "text" in message else None
+        if not self.admin_check(user_key) and not self._allow(user_key):
+            self.sender(sender, "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.")
+            return
         if self.notice is not None:
             notice = self.notice(user_key)
             if notice:
                 self.sender(sender, notice)
-        message = event["message"]
-        text = str(message["text"]) if "text" in message else None
         if text is not None and self.command_handler is not None:
             result = self.command_handler(user_key, text)
             if result is not None:
@@ -138,9 +141,6 @@ class Gateway:
                     if sent is False:
                         self.sender(sender, "Não consegui enviar o ficheiro CSV. Tenta novamente mais tarde.")
                 return
-        if not self.admin_check(user_key) and not self._allow(user_key):
-            self.sender(sender, "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.")
-            return
         if "text" not in message:
             reply = "Recebi o teu anexo, mas por agora só consigo processar mensagens de texto."
         else:

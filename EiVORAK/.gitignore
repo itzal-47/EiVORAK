@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+fotos_perfil/
+relatorio_utilizadores.txt
+__pycache__/
+.pytest_cache/
+.venv/
+venv/

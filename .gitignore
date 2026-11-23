@@ -1,6 +1,12 @@
-eivorak_brain.db
 .env
-venv/
+.env.*
+!.env.example
+*.db
+*.db-*
+Chaves*
 fotos_perfil/
 relatorio_utilizadores.txt
-Chaves.txt
+__pycache__/
+.pytest_cache/
+venv/
+.venv/

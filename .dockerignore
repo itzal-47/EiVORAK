@@ -10,4 +10,4 @@ venv
 *.db-*
 fotos_perfil
 relatorio_utilizadores.txt
-Chaves.txt
+Chaves*

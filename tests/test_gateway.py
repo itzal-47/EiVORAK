@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from eivorak.app import create_app
 from eivorak.config import Settings
 from eivorak.gateway import Gateway
+from eivorak.memory.db import claim_privacy_notice, init_db
 
 
 class FakeProvider:
@@ -53,7 +54,10 @@ def test_duplicate_mid_is_queued_and_processed_once(tmp_path):
     assert gateway.enqueue_payload(payload) == 0
     assert gateway.process_next()
     assert len(provider.calls) == 1
-    assert sent == [("42", "Resposta.")]
+    assert sent == [
+        ("42", "Guardo as tuas mensagens para manter o contexto. O criador pode rever conversas para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar."),
+        ("42", "Resposta."),
+    ]
 
 
 def test_rate_limit_and_attachment_reply(tmp_path):
@@ -71,3 +75,20 @@ def test_rate_limit_and_attachment_reply(tmp_path):
     attachment_gateway.enqueue_payload(_payload({"mid": "three", "attachments": [{"type": "image"}]}))
     attachment_gateway.process_next()
     assert "anexo" in sent[-1][1]
+
+
+def test_privacy_notice_is_sent_once_per_user(tmp_path):
+    path = tmp_path / "notice.db"
+    init_db(path)
+    sent = []
+    gateway = Gateway(
+        lambda _key, text: "Resposta: " + text,
+        lambda *args: sent.append(args),
+        worker_enabled=False,
+        notice=lambda key: "Aviso de privacidade." if claim_privacy_notice(path, key) else None,
+    )
+    gateway.enqueue_payload(_payload({"mid": "notice-1", "text": "Primeira"}))
+    gateway.enqueue_payload(_payload({"mid": "notice-2", "text": "Segunda"}))
+    gateway.process_next()
+    gateway.process_next()
+    assert [text for _recipient, text in sent].count("Aviso de privacidade.") == 1

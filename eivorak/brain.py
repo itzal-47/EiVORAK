@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Any
 
-from .memory.db import get_history, save_message, search_knowledge
+from .memory.db import delete_user_data, get_history, get_user_summary, save_message, search_knowledge
 from .prompts import build_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,28 @@ class Brain:
         self.creator_info = creator_info
 
     def answer(self, user_key: str, text: str) -> str:
+        command = text.strip().casefold()
+        if command == "/meusdados":
+            summary = get_user_summary(self.database_path, user_key)
+            if summary is None:
+                return "Ainda não tenho dados guardados sobre ti."
+            name = summary.get("first_name")
+            lines = [
+                "Estes são os dados guardados sobre ti:",
+                f"Primeira vez: {summary['first_seen'] or 'não registada'}",
+                f"Mensagens: {summary['message_count']}",
+            ]
+            if name:
+                lines.append(f"Nome: {name}")
+            return "\n".join(lines)
+        if command == "/apagar":
+            return "Queres apagar os teus dados e conversas? Confirma com /apagar sim."
+        if command == "/apagar sim" or command in {
+            "apagar meus dados", "eliminar meus dados", "/eliminar meus dados"
+        }:
+            delete_user_data(self.database_path, user_key)
+            return "Os teus dados e conversas foram apagados."
+
         save_message(self.database_path, user_key, "user", text)
         history = get_history(self.database_path, user_key, limit=10)
         # The just-saved user message is already in history; do not append it twice.

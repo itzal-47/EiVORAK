@@ -11,7 +11,7 @@ from .brain import Brain
 from .config import Settings, load_settings
 from .gateway import Gateway
 from .humanize import split_message
-from .memory.db import init_db
+from .memory.db import claim_privacy_notice, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,15 @@ def create_app(
     app = Flask(__name__)
     app.extensions["eivorak_brain"] = brain
     send = sender or (lambda recipient, text: _send_message(configuration, recipient, text))
-    gateway = Gateway(brain.answer, send, worker_enabled=worker_enabled)
+    def notice_for_user(user_key: str) -> str | None:
+        if claim_privacy_notice(configuration.database_path, user_key):
+            return (
+                "Guardo as tuas mensagens para manter o contexto. O criador pode rever conversas "
+                "para melhorar o bot. Usa /meusdados para ver os dados guardados e /apagar para os apagar."
+            )
+        return None
+
+    gateway = Gateway(brain.answer, send, worker_enabled=worker_enabled, notice=notice_for_user)
     app.extensions["eivorak_gateway"] = gateway
 
     @app.get("/")

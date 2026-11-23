@@ -1,6 +1,14 @@
 import sqlite3
 
-from eivorak.memory.db import connect_db, get_history, init_db, save_message, search_knowledge
+from eivorak.memory.db import (
+    claim_privacy_notice,
+    connect_db,
+    get_history,
+    get_user_summary,
+    init_db,
+    save_message,
+    search_knowledge,
+)
 
 
 def test_migrates_legacy_data_and_removes_unneeded_profile_fields(tmp_path):
@@ -28,6 +36,9 @@ def test_migrates_legacy_data_and_removes_unneeded_profile_fields(tmp_path):
     assert get_history(path, "messenger:123") == [
         {"role": "user", "content": "Olá"}, {"role": "user", "content": "Outra"}
     ]
+    assert get_user_summary(path, "messenger:123")["message_count"] == 3
+    assert claim_privacy_notice(path, "messenger:123") is True
+    assert claim_privacy_notice(path, "messenger:123") is False
 
 
 def test_new_database_uses_channel_qualified_keys(tmp_path):

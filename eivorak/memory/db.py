@@ -34,7 +34,8 @@ def init_db(database_path: str | Path) -> None:
                 first_seen TEXT,
                 last_seen TEXT,
                 message_count INTEGER NOT NULL DEFAULT 0,
-                first_name TEXT
+                first_name TEXT,
+                notice_sent INTEGER NOT NULL DEFAULT 0
             )"""
         )
         connection.execute(
@@ -68,6 +69,8 @@ def init_db(database_path: str | Path) -> None:
                     connection.execute(f"UPDATE users SET {private_column} = NULL")
         elif "user_key" not in user_cols:
             raise RuntimeError("Esquema da tabela users não reconhecido")
+        if "notice_sent" not in user_cols:
+            connection.execute("ALTER TABLE users ADD COLUMN notice_sent INTEGER NOT NULL DEFAULT 0")
 
         conversation_cols = _columns(connection, "conversations")
         if "user_id" in conversation_cols and "user_key" not in conversation_cols:
@@ -129,6 +132,49 @@ def get_history(database_path: str | Path, user_key: str, limit: int = 10) -> li
         ).fetchall()
     rows.reverse()
     return [{"role": role, "content": content} for role, content in rows]
+
+
+def get_user_summary(database_path: str | Path, user_key: str) -> dict[str, object] | None:
+    """Return the minimal user information exposed by the privacy command."""
+    with connect_db(database_path) as connection:
+        row = connection.execute(
+            "SELECT first_seen, message_count, first_name FROM users WHERE user_key = ?",
+            (user_key,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"first_seen": row[0], "message_count": int(row[1]), "first_name": row[2]}
+
+
+def claim_privacy_notice(database_path: str | Path, user_key: str) -> bool:
+    """Persist that the one-time privacy notice was claimed for this user."""
+    now = datetime.now(timezone.utc).isoformat()
+    with connect_db(database_path) as connection:
+        user_columns = _columns(connection, "users")
+        if "user_id" in user_columns:
+            cursor = connection.execute(
+                """INSERT INTO users(user_id, user_key, first_seen, last_seen, message_count, notice_sent)
+                   VALUES (?, ?, ?, ?, 0, 1)
+                   ON CONFLICT(user_key) DO UPDATE SET notice_sent = 1
+                   WHERE users.notice_sent = 0""",
+                (user_key.partition(":")[2], user_key, now, now),
+            )
+        else:
+            cursor = connection.execute(
+                """INSERT INTO users(user_key, first_seen, last_seen, message_count, notice_sent)
+                   VALUES (?, ?, ?, 0, 1)
+                   ON CONFLICT(user_key) DO UPDATE SET notice_sent = 1
+                   WHERE users.notice_sent = 0""",
+                (user_key, now, now),
+            )
+    return cursor.rowcount == 1
+
+
+def delete_user_data(database_path: str | Path, user_key: str) -> None:
+    """Delete the user's record and all saved messages."""
+    with connect_db(database_path) as connection:
+        connection.execute("DELETE FROM conversations WHERE user_key = ?", (user_key,))
+        connection.execute("DELETE FROM users WHERE user_key = ?", (user_key,))
 
 
 def search_knowledge(database_path: str | Path, question: str) -> str | None:

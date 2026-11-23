@@ -12,6 +12,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 Sender = Callable[[str, str], None]
 Responder = Callable[[str, str], str]
+Notice = Callable[[str], str | None]
 
 
 class Gateway:
@@ -24,10 +25,12 @@ class Gateway:
         *,
         messages_per_minute: int = 20,
         worker_enabled: bool = True,
+        notice: Notice | None = None,
     ) -> None:
         self.responder = responder
         self.sender = sender
         self.messages_per_minute = messages_per_minute
+        self.notice = notice
         self.queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._counts: dict[str, deque[float]] = defaultdict(deque)
@@ -114,6 +117,10 @@ class Gateway:
         if not self._allow(user_key):
             self.sender(sender, "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.")
             return
+        if self.notice is not None:
+            notice = self.notice(user_key)
+            if notice:
+                self.sender(sender, notice)
         message = event["message"]
         if "text" not in message:
             reply = "Recebi o teu anexo, mas por agora só consigo processar mensagens de texto."

@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.git
+.pytest_cache
+__pycache__
+venv
+.venv
+*.db
+*.db-*
+fotos_perfil
+relatorio_utilizadores.txt
+Chaves.txt

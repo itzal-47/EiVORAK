@@ -1,6 +1,7 @@
 """Flask entry point and Messenger webhook."""
 
 import logging
+import time
 from typing import Any
 
 from flask import Flask, request
@@ -9,6 +10,7 @@ from groq import Groq
 from .brain import Brain
 from .config import Settings, load_settings
 from .gateway import Gateway
+from .humanize import split_message
 from .memory.db import init_db
 
 logger = logging.getLogger(__name__)
@@ -54,16 +56,24 @@ def create_app(
 
 
 def _send_message(settings: Settings, recipient: str, text: str) -> None:
-    """Send a text reply through Meta's Graph API."""
+    """Send channel-sized text parts and signal typing before each part."""
     import requests
 
-    try:
-        response = requests.post(
-            "https://graph.facebook.com/v23.0/me/messages",
-            params={"access_token": settings.page_access_token},
-            json={"recipient": {"id": recipient}, "message": {"text": text[:2000]}},
-            timeout=8,
-        )
-        response.raise_for_status()
-    except Exception:
-        logger.exception("Falha ao enviar resposta ao Messenger")
+    for part in split_message(text, max_len=2000):
+        try:
+            requests.post(
+                "https://graph.facebook.com/v23.0/me/messages",
+                params={"access_token": settings.page_access_token},
+                json={"recipient": {"id": recipient}, "sender_action": "typing_on"},
+                timeout=8,
+            ).raise_for_status()
+            time.sleep(min(0.8, max(0.15, len(part) / 2000)))
+            requests.post(
+                "https://graph.facebook.com/v23.0/me/messages",
+                params={"access_token": settings.page_access_token},
+                json={"recipient": {"id": recipient}, "message": {"text": part}},
+                timeout=8,
+            ).raise_for_status()
+        except Exception:
+            logger.exception("Falha ao enviar resposta ao Messenger")
+            return

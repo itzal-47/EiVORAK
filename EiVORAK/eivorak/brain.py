@@ -1,6 +1,7 @@
 """Conversation orchestration."""
 
 import logging
+import re
 from typing import Any
 
 from .memory.db import get_history, save_message, search_knowledge
@@ -25,12 +26,44 @@ class Brain:
             system += f"\n\nConhecimento relevante: {known}"
         messages = [{"role": "system", "content": system}, *history]
         try:
-            response = self.provider.chat.completions.create(
-                model="llama-3.3-70b-versatile", messages=messages, max_tokens=1024, temperature=0.7
-            )
-            reply = (response.choices[0].message.content or "").strip() or "Não consegui preparar uma resposta agora."
+            reply = self._complete(messages)
         except Exception:
             logger.exception("Falha ao obter resposta do fornecedor de IA")
             reply = "Tive um problema a pensar. Tenta novamente daqui a pouco."
         save_message(self.database_path, user_key, "assistant", reply)
+        return reply
+
+    def _complete(self, messages: list[dict[str, str]]) -> str:
+        """Request a generous completion and continue once if the model hit its limit."""
+        parts: list[str] = []
+        current_messages = messages
+        for attempt in range(3):
+            response = self.provider.chat.completions.create(
+                model="llama-3.3-70b-versatile", messages=current_messages,
+                max_tokens=2048, temperature=0.7,
+            )
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            if content:
+                parts.append(content)
+            finish_reason = getattr(choice, "finish_reason", None)
+            if finish_reason != "length":
+                break
+            if attempt < 2:
+                current_messages = [
+                    *current_messages,
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": "Continua exactamente de onde paraste, sem repetir o que já disseste."},
+                ]
+                continue
+
+        reply = " ".join(part for part in parts if part).strip()
+        if not reply:
+            return "Não consegui preparar uma resposta agora."
+        if getattr(choice, "finish_reason", None) == "length":
+            complete_sentences = re.findall(r".*?[.!?…](?=\s|$)", reply, flags=re.DOTALL)
+            if complete_sentences:
+                reply = " ".join(sentence.strip() for sentence in complete_sentences).strip()
+            else:
+                reply = "Não consegui concluir a resposta. Posso tentar de novo com uma pergunta mais específica."
         return reply

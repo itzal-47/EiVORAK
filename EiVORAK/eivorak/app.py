@@ -8,12 +8,19 @@ from groq import Groq
 
 from .brain import Brain
 from .config import Settings, load_settings
+from .gateway import Gateway
 from .memory.db import init_db
 
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None, provider: Any | None = None) -> Flask:
+def create_app(
+    settings: Settings | None = None,
+    provider: Any | None = None,
+    *,
+    sender: Any | None = None,
+    worker_enabled: bool = True,
+) -> Flask:
     """Create the web application and initialise its database once."""
     configuration = settings or load_settings()
     init_db(configuration.database_path)
@@ -21,6 +28,9 @@ def create_app(settings: Settings | None = None, provider: Any | None = None) ->
     brain = Brain(configuration.database_path, llm, configuration.creator_info)
     app = Flask(__name__)
     app.extensions["eivorak_brain"] = brain
+    send = sender or (lambda recipient, text: _send_message(configuration, recipient, text))
+    gateway = Gateway(brain.answer, send, worker_enabled=worker_enabled)
+    app.extensions["eivorak_gateway"] = gateway
 
     @app.get("/")
     def status() -> tuple[str, int]:
@@ -32,18 +42,12 @@ def create_app(settings: Settings | None = None, provider: Any | None = None) ->
             if request.args.get("hub.verify_token") == configuration.verify_token:
                 return request.args.get("hub.challenge", ""), 200
             return "Token inválido", 403
+        body = request.get_data(cache=True)
+        signature = request.headers.get("X-Hub-Signature-256")
+        if not Gateway.valid_signature(body, signature, configuration.meta_app_secret):
+            return "Assinatura inválida", 403
         data = request.get_json(silent=True) or {}
-        for entry in data.get("entry", []):
-            for event in entry.get("messaging", []):
-                message = event.get("message")
-                sender = event.get("sender", {}).get("id")
-                if not message or not sender or message.get("is_echo"):
-                    continue
-                if "text" not in message:
-                    reply = "Recebi o teu anexo, mas por agora só consigo processar mensagens de texto."
-                else:
-                    reply = brain.answer(f"messenger:{sender}", str(message["text"]))
-                _send_message(configuration, str(sender), reply)
+        gateway.enqueue_payload(data)
         return "OK", 200
 
     return app

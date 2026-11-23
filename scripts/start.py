@@ -37,8 +37,7 @@ def start(
     configured = [bool(env.get(name, "").strip()) for name in LITESTREAM_SETTINGS]
 
     if not any(configured):
-        command = [sys.executable, "-m", "eivorak"]
-        replace_process(sys.executable, command, env)
+        replace_process("gunicorn", _gunicorn_command(env), env)
         return 0
     if not all(configured):
         missing = [name for name, present in zip(LITESTREAM_SETTINGS, configured) if not present]
@@ -60,7 +59,7 @@ def start(
             logger.error("Litestream falhou ao restaurar a base de dados (código %s)", result.returncode)
             return result.returncode
 
-    app_command = shlex.join([sys.executable, "-m", "eivorak"])
+    app_command = shlex.join(_gunicorn_command(env))
     command = [
         "litestream", "replicate", "-config", str(LITESTREAM_CONFIG),
         "-restore-if-db-not-exists", "-exec", app_command,
@@ -71,6 +70,15 @@ def start(
         logger.exception("Litestream não está instalado ou não pode ser executado")
         return 127
     return 0
+
+
+def _gunicorn_command(environment: Mapping[str, str]) -> list[str]:
+    """Build the production Gunicorn command for the configured port."""
+    port = environment.get("PORT", "5000")
+    return [
+        "gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120",
+        "--bind", f"0.0.0.0:{port}", "eivorak.app:create_app()",
+    ]
 
 
 def main() -> int:

@@ -1,5 +1,4 @@
 import subprocess
-import sys
 
 from scripts.start import LITESTREAM_CONFIG, start
 
@@ -19,8 +18,11 @@ def test_local_start_does_not_require_litestream(monkeypatch):
         executable, arguments, environment = exc.args[0]
     else:
         raise AssertionError("o processo do bot devia ser iniciado")
-    assert executable == sys.executable
-    assert arguments == [sys.executable, "-m", "eivorak"]
+    assert executable == "gunicorn"
+    assert arguments == [
+        "gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120",
+        "--bind", "0.0.0.0:5000", "eivorak.app:create_app()",
+    ]
     assert environment["DATABASE_PATH"] == "eivorak_brain.db"
 
 
@@ -31,6 +33,7 @@ def test_missing_database_without_replica_still_starts_litestream_exec():
         "LITESTREAM_BUCKET": "test-bucket",
         "LITESTREAM_ACCESS_KEY_ID": "test-key",
         "LITESTREAM_SECRET_ACCESS_KEY": "test-secret",
+        "PORT": "8123",
     }
     commands = []
 
@@ -56,6 +59,8 @@ def test_missing_database_without_replica_still_starts_litestream_exec():
     assert arguments[:3] == ["litestream", "replicate", "-config"]
     assert "-restore-if-db-not-exists" in arguments
     assert "-exec" in arguments
+    exec_index = arguments.index("-exec")
+    assert arguments[exec_index + 1] == "gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:8123 'eivorak.app:create_app()'"
     assert passed_environment["DATABASE_PATH"] == "/tmp/eivorak-test.db"
 
 

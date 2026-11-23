@@ -25,7 +25,14 @@ O [litestream.yml](litestream.yml) expande as variáveis no arranque e não cont
 
 ### Render
 
-Cria um serviço **Docker** e usa o `Dockerfile` deste repositório. O container instala Litestream e executa `python scripts/start.py`. Define no painel do Render as variáveis normais do bot e as quatro variáveis de Litestream acima. O endpoint deve incluir o esquema, por exemplo `https://...`; a configuração usa a região S3 `us-east-1`. Não coloques credenciais no Dockerfile nem no `litestream.yml`.
+1. Cria um **Web Service** no Render e escolhe o runtime **Docker**. O `Dockerfile` na raiz instala Litestream e as dependências Python.
+2. Usa `python scripts/start.py` como Start Command (ou deixa o `CMD` do Dockerfile).
+3. Adiciona as variáveis do bot no painel do Render:
+   - Obrigatórias: `VERIFY_TOKEN`, `PAGE_ACCESS_TOKEN`, `META_APP_SECRET`, `GROQ_API_KEY`, `ADMIN_PAIRING_SECRET`.
+   - Opcionais: `CREATOR_INFO`, `PORT`, `DATABASE_PATH` (o Dockerfile define `/data/eivorak_brain.db` por omissão).
+4. Para replicação, adiciona também `LITESTREAM_ENDPOINT`, `LITESTREAM_BUCKET`, `LITESTREAM_ACCESS_KEY_ID` e `LITESTREAM_SECRET_ACCESS_KEY`. O endpoint deve incluir o esquema, por exemplo `https://...`; a configuração usa a região S3 `us-east-1`.
+
+Não coloques credenciais no Dockerfile nem no `litestream.yml`.
 
 Sem as quatro variáveis de Litestream, o container corre o bot em modo local. Nesse modo, uma plataforma com disco efémero pode perder a base nos reinícios; configura uma réplica para restaurar os dados.
 

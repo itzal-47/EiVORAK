@@ -1,6 +1,6 @@
 import sqlite3
 
-from eivorak.memory.db import get_history, init_db, save_message
+from eivorak.memory.db import connect_db, get_history, init_db, save_message, search_knowledge
 
 
 def test_migrates_legacy_data_and_removes_unneeded_profile_fields(tmp_path):
@@ -35,3 +35,16 @@ def test_new_database_uses_channel_qualified_keys(tmp_path):
     init_db(path)
     save_message(path, "messenger:42", "user", "Olá")
     assert get_history(path, "messenger:42") == [{"role": "user", "content": "Olá"}]
+
+
+def test_connections_use_busy_timeout_and_escape_like_wildcards(tmp_path):
+    path = tmp_path / "knowledge.db"
+    init_db(path)
+    with connect_db(path) as connection:
+        assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        connection.executemany(
+            "INSERT INTO knowledge(question, answer) VALUES (?, ?)",
+            [("contains a%b_ token", "literal"), ("contains axbX token", "wildcard")],
+        )
+    assert search_knowledge(path, "a%b_") == "literal"
+    assert search_knowledge(path, "a_b") is None

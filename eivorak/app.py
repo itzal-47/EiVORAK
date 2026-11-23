@@ -26,7 +26,7 @@ def create_app(
     """Create the web application and initialise its database once."""
     configuration = settings or load_settings()
     init_db(configuration.database_path)
-    llm = provider or Groq(api_key=configuration.groq_api_key)
+    llm = provider or Groq(api_key=configuration.groq_api_key, timeout=30, max_retries=1)
     brain = Brain(configuration.database_path, llm, configuration.creator_info)
     app = Flask(__name__)
     app.extensions["eivorak_brain"] = brain
@@ -68,6 +68,9 @@ def _send_message(settings: Settings, recipient: str, text: str) -> None:
                 timeout=8,
             ).raise_for_status()
             time.sleep(min(0.8, max(0.15, len(part) / 2000)))
+        except Exception:
+            logger.exception("Falha ao activar typing_on no Messenger")
+        try:
             requests.post(
                 "https://graph.facebook.com/v23.0/me/messages",
                 params={"access_token": settings.page_access_token},
@@ -76,4 +79,3 @@ def _send_message(settings: Settings, recipient: str, text: str) -> None:
             ).raise_for_status()
         except Exception:
             logger.exception("Falha ao enviar resposta ao Messenger")
-            return

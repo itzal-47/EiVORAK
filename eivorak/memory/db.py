@@ -1,11 +1,22 @@
 """SQLite storage and forward-only migration from the original schema."""
 
 from datetime import datetime, timezone
+from contextlib import closing, contextmanager
 import logging
 import sqlite3
 from pathlib import Path
+from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def connect_db(database_path: str | Path) -> Iterator[sqlite3.Connection]:
+    """Open a busy-tolerant SQLite connection and always close it."""
+    with closing(sqlite3.connect(str(database_path))) as connection:
+        connection.execute("PRAGMA busy_timeout=5000")
+        with connection:
+            yield connection
 
 
 def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -15,7 +26,7 @@ def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
 def init_db(database_path: str | Path) -> None:
     """Create or migrate the database once during application startup."""
     path = str(database_path)
-    with sqlite3.connect(path) as connection:
+    with connect_db(path) as connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute(
             """CREATE TABLE IF NOT EXISTS users (
@@ -69,14 +80,13 @@ def init_db(database_path: str | Path) -> None:
 
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_key ON users(user_key)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_key_id ON conversations(user_key, id)")
-        connection.commit()
     logger.info("Base de dados inicializada e migrada: %s", path)
 
 
 def save_message(database_path: str | Path, user_key: str, role: str, content: str) -> None:
     """Persist a message and update the minimal user record."""
     now = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(str(database_path)) as connection:
+    with connect_db(database_path) as connection:
         conversation_columns = _columns(connection, "conversations")
         if "user_id" in conversation_columns:
             connection.execute(
@@ -112,7 +122,7 @@ def save_message(database_path: str | Path, user_key: str, role: str, content: s
 
 def get_history(database_path: str | Path, user_key: str, limit: int = 10) -> list[dict[str, str]]:
     """Return the latest conversation messages in chronological order."""
-    with sqlite3.connect(str(database_path)) as connection:
+    with connect_db(database_path) as connection:
         rows = connection.execute(
             "SELECT role, content FROM conversations WHERE user_key = ? ORDER BY id DESC LIMIT ?",
             (user_key, limit),
@@ -122,14 +132,18 @@ def get_history(database_path: str | Path, user_key: str, limit: int = 10) -> li
 
 
 def search_knowledge(database_path: str | Path, question: str) -> str | None:
-    with sqlite3.connect(str(database_path)) as connection:
+    query = question.lower().strip()
+    with connect_db(database_path) as connection:
         row = connection.execute(
-            "SELECT answer FROM knowledge WHERE LOWER(question) = ? LIMIT 1", (question.lower().strip(),)
+            "SELECT answer FROM knowledge WHERE LOWER(question) = ? LIMIT 1", (query,)
         ).fetchone()
         if row:
             return str(row[0])
+        if len(query) < 4:
+            return None
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         row = connection.execute(
-            "SELECT answer FROM knowledge WHERE LOWER(question) LIKE ? LIMIT 1",
-            (f"%{question.lower().strip()}%",),
+            "SELECT answer FROM knowledge WHERE LOWER(question) LIKE ? ESCAPE '\\' LIMIT 1",
+            (f"%{escaped}%",),
         ).fetchone()
     return str(row[0]) if row else None

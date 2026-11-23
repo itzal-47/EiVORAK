@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import requests
 
 from eivorak.app import _send_message, create_app
+from eivorak.admin import FileAttachment
 from eivorak.config import Settings
 
 
@@ -50,3 +51,27 @@ def test_typing_or_part_failure_does_not_skip_send_or_later_parts(monkeypatch):
     assert len([call for call in calls if "message" in call]) == 2
     assert message_attempts == 2
     assert len(calls) == 4
+
+
+def test_csv_attachment_uses_multipart_send_api(monkeypatch):
+    seen = []
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    def fake_post(url, **kwargs):
+        seen.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr("eivorak.app.time.sleep", lambda _seconds: None)
+    settings = Settings("verify", "page", "secret", "groq", "pair", "", 5000, "unused.db")
+    attachment = FileAttachment("export.csv", b"a,b\n1,2\n")
+
+    assert _send_message(settings, "42", "Exportação gerada.", attachment) is True
+    upload_url, kwargs = seen[-1]
+    assert upload_url.endswith("/me/messages")
+    assert kwargs["files"]["filedata"] == ("export.csv", b"a,b\n1,2\n", "text/csv")
+    assert kwargs["data"]["recipient"] == '{"id": "42"}'
+    assert '"type": "file"' in kwargs["data"]["message"]

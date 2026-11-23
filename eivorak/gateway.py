@@ -9,10 +9,14 @@ import threading
 import time
 from typing import Any, Callable
 
+from .admin import AdminResponse
+
 logger = logging.getLogger(__name__)
-Sender = Callable[[str, str], None]
+Sender = Callable[..., bool | None]
 Responder = Callable[[str, str], str]
 Notice = Callable[[str], str | None]
+CommandHandler = Callable[[str, str], AdminResponse | None]
+AdminCheck = Callable[[str], bool]
 
 
 class Gateway:
@@ -26,11 +30,15 @@ class Gateway:
         messages_per_minute: int = 20,
         worker_enabled: bool = True,
         notice: Notice | None = None,
+        command_handler: CommandHandler | None = None,
+        admin_check: AdminCheck | None = None,
     ) -> None:
         self.responder = responder
         self.sender = sender
         self.messages_per_minute = messages_per_minute
         self.notice = notice
+        self.command_handler = command_handler
+        self.admin_check = admin_check or (lambda _user_key: False)
         self.queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._counts: dict[str, deque[float]] = defaultdict(deque)
@@ -114,16 +122,27 @@ class Gateway:
     def _process_event(self, event: dict[str, Any]) -> None:
         sender = event["sender"]
         user_key = f"messenger:{sender}"
-        if not self._allow(user_key):
-            self.sender(sender, "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.")
-            return
         if self.notice is not None:
             notice = self.notice(user_key)
             if notice:
                 self.sender(sender, notice)
         message = event["message"]
+        text = str(message["text"]) if "text" in message else None
+        if text is not None and self.command_handler is not None:
+            result = self.command_handler(user_key, text)
+            if result is not None:
+                if result.attachment is None:
+                    self.sender(sender, result.text)
+                else:
+                    sent = self.sender(sender, result.text, result.attachment)
+                    if sent is False:
+                        self.sender(sender, "Não consegui enviar o ficheiro CSV. Tenta novamente mais tarde.")
+                return
+        if not self.admin_check(user_key) and not self._allow(user_key):
+            self.sender(sender, "Recebi muitas mensagens tuas num minuto. Aguarda um pouco e tenta novamente.")
+            return
         if "text" not in message:
             reply = "Recebi o teu anexo, mas por agora só consigo processar mensagens de texto."
         else:
-            reply = self.responder(user_key, str(message["text"]))
+            reply = self.responder(user_key, text or "")
         self.sender(sender, reply)

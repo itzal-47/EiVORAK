@@ -34,6 +34,8 @@ O [litestream.yml](litestream.yml) expande as variáveis no arranque e não cont
 
 Não coloques credenciais no Dockerfile nem no `litestream.yml`.
 
+Depois de emparelhar o admin pela Página, troca `ADMIN_PAIRING_SECRET` no Render. O código `/admin <código>` fica visível no histórico desse chat.
+
 Sem as quatro variáveis de Litestream, o container corre o bot em modo local. Nesse modo, uma plataforma com disco efémero pode perder a base nos reinícios; configura uma réplica para restaurar os dados.
 
 ## Testes

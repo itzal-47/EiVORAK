@@ -1,12 +1,14 @@
 """Flask entry point and Messenger webhook."""
 
 import logging
+import json
 import time
 from typing import Any
 
 from flask import Flask, request
 from groq import Groq
 
+from .admin import AdminService, FileAttachment
 from .brain import Brain
 from .config import Settings, load_settings
 from .gateway import Gateway
@@ -30,7 +32,11 @@ def create_app(
     brain = Brain(configuration.database_path, llm, configuration.creator_info)
     app = Flask(__name__)
     app.extensions["eivorak_brain"] = brain
-    send = sender or (lambda recipient, text: _send_message(configuration, recipient, text))
+    send = sender or (
+        lambda recipient, text, attachment=None: _send_message(
+            configuration, recipient, text, attachment
+        )
+    )
     def notice_for_user(user_key: str) -> str | None:
         if claim_privacy_notice(configuration.database_path, user_key):
             return (
@@ -39,8 +45,17 @@ def create_app(
             )
         return None
 
-    gateway = Gateway(brain.answer, send, worker_enabled=worker_enabled, notice=notice_for_user)
+    admin = AdminService(configuration.database_path, configuration.admin_pairing_secret)
+    gateway = Gateway(
+        brain.answer,
+        send,
+        worker_enabled=worker_enabled,
+        notice=notice_for_user,
+        command_handler=admin.handle,
+        admin_check=admin.is_admin,
+    )
     app.extensions["eivorak_gateway"] = gateway
+    app.extensions["eivorak_admin"] = admin
 
     @app.get("/")
     def status() -> tuple[str, int]:
@@ -63,8 +78,13 @@ def create_app(
     return app
 
 
-def _send_message(settings: Settings, recipient: str, text: str) -> None:
-    """Send channel-sized text parts and signal typing before each part."""
+def _send_message(
+    settings: Settings,
+    recipient: str,
+    text: str,
+    attachment: FileAttachment | None = None,
+) -> bool | None:
+    """Send text parts or a multipart file through the Messenger Send API."""
     import requests
 
     for part in split_message(text, max_len=2000):
@@ -87,3 +107,26 @@ def _send_message(settings: Settings, recipient: str, text: str) -> None:
             ).raise_for_status()
         except Exception:
             logger.exception("Falha ao enviar resposta ao Messenger")
+    if attachment is None:
+        return None
+    if len(attachment.content) > 20 * 1024 * 1024:
+        logger.error("O anexo excede o limite de 20 MB")
+        return False
+    try:
+        response = requests.post(
+            "https://graph.facebook.com/v23.0/me/messages",
+            params={"access_token": settings.page_access_token},
+            data={
+                "recipient": json.dumps({"id": recipient}),
+                "message": json.dumps({
+                    "attachment": {"type": "file", "payload": {"is_reusable": False}}
+                }),
+            },
+            files={"filedata": (attachment.filename, attachment.content, attachment.content_type)},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except Exception:
+        logger.exception("Falha ao enviar ficheiro CSV ao Messenger")
+        return False
+    return True

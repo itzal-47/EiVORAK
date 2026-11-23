@@ -55,6 +55,27 @@ def init_db(database_path: str | Path) -> None:
                 created_at TEXT
             )"""
         )
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS admins (
+                user_key TEXT PRIMARY KEY,
+                paired_at TEXT NOT NULL
+            )"""
+        )
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS admin_attempts (
+                id INTEGER PRIMARY KEY,
+                user_key TEXT NOT NULL,
+                attempted_at TEXT NOT NULL
+            )"""
+        )
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                user_key TEXT NOT NULL,
+                command TEXT NOT NULL
+            )"""
+        )
 
         user_cols = _columns(connection, "users")
         if "user_id" in user_cols:
